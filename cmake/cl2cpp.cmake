@@ -47,7 +47,7 @@ foreach(cl ${cl_list})
 
   string(REGEX REPLACE "\"$" "" lines "${lines}") # unneeded " at the eof
 
-  string(MD5 hash "${lines}")
+#  string(MD5 hash "${lines}")
 
   set(STR_CPP "${STR_CPP}const struct ProgramEntry ${cl_filename}={\"${cl_filename}\",\n\"${lines}, \"${hash}\"};\n")
   set(STR_HPP "${STR_HPP}extern const struct ProgramEntry ${cl_filename};\n")
