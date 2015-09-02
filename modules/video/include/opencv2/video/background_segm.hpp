@@ -86,6 +86,8 @@ public:
 	CV_WRAP_AS(static_mask) virtual void static_mask(InputArray inmask);
 	//! return image of background model
 	CV_WRAP_AS(get_background) virtual void getBackgroundImage(OutputArray backgroundImage) const;
+    CV_WRAP_AS(get_background_mean) virtual void getBackgroundImageMean(OutputArray backgroundImage) const;
+    CV_WRAP_AS(get_bgmodel_imgs) virtual void getBackgroundImgs(OutputArray backgroundImage0, OutputArray backgroundImage1, OutputArray backgroundImage2, OutputArray activeBackground) const;
     
     //! the default constructor
     CV_WRAP BackgroundSubtractorMOG();

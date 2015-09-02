@@ -536,6 +536,54 @@ void BackgroundSubtractorMOG::static_mask(InputArray _inmask)
 
 }
 
+void BackgroundSubtractorMOG::getBackgroundImageMean(OutputArray backgroundImage) const
+{
+    int x, y, k, K = nmixtures;
+    int nchannels = CV_MAT_CN(frameType);
+    CV_Assert(nchannels == 1 || nchannels == 3);
+
+    Mat meanBackground(frameSize, CV_MAKETYPE(CV_8U, nchannels), Scalar::all(0));
+    MixData<Vec3f>* mptr = (MixData<Vec3f>*)bgmodel.data;
+
+    std::vector<float> meanVal(nchannels, 0.f);
+    for( y = 0; y < frameSize.height; y++ )
+    {
+        for( x = 0; x < frameSize.width; x++, mptr += K )
+        {
+            float totalWeight = 0.f;
+            for( k = 0; k < K; k++ )
+            {   
+                float w = mptr[k].weight;
+                
+                for(int chn = 0; chn < nchannels; chn++)
+                {
+                    meanVal[chn] += w * mptr[k].mean[chn];
+                }
+                
+                totalWeight += w;
+
+                if(totalWeight > backgroundRatio)
+                    break;
+            }
+            float invWeight = 1.f/totalWeight;
+            switch(nchannels)
+            {
+            case 1:
+                meanBackground.at<uchar>(y, x) = (uchar)(meanVal[0] * invWeight);
+                meanVal[0] = 0.f;
+                break;
+            case 3:
+                Vec3f& meanVec = *reinterpret_cast<Vec3f*>(&meanVal[0]);
+                meanBackground.at<Vec3b>(y, x) = Vec3b(meanVec * invWeight);
+                meanVec = 0.f;
+                break;
+            }
+        }
+        
+    }
+    meanBackground.copyTo(backgroundImage);
+}
+
 // Required for Ghost detection Evaluators
 void BackgroundSubtractorMOG::getBackgroundImage(OutputArray backgroundImage) const
 {
@@ -573,6 +621,112 @@ void BackgroundSubtractorMOG::getBackgroundImage(OutputArray backgroundImage) co
         
     }
     meanBackground.copyTo(backgroundImage);
+}
+
+void BackgroundSubtractorMOG::getBackgroundImgs(OutputArray backgroundImage0, OutputArray backgroundImage1, OutputArray backgroundImage2, OutputArray activeBackground) const
+{
+    int x, y, k, K = nmixtures;
+    int nchannels = CV_MAT_CN(frameType);
+    CV_Assert(nchannels == 1 || nchannels == 3);
+
+    Mat background0(frameSize, CV_MAKETYPE(CV_8U, nchannels), Scalar::all(0));
+    Mat background1(frameSize, CV_MAKETYPE(CV_8U, nchannels), Scalar::all(0));
+    Mat background2(frameSize, CV_MAKETYPE(CV_8U, nchannels), Scalar::all(0));
+    Mat active(frameSize, CV_MAKETYPE(CV_8U, 1), Scalar::all(0));
+    MixData<Vec3f>* mptr = (MixData<Vec3f>*)bgmodel.data;
+
+    std::vector<float> meanVal(nchannels, 0.f);
+    for( y = 0; y < frameSize.height; y++ )
+    {
+        for( x = 0; x < frameSize.width; x++, mptr += K )
+        {
+            int ks = -1;
+            // First 
+            k = 0;
+            for(int chn = 0; chn < nchannels; chn++)
+			{
+				meanVal[chn] =  mptr[k].mean[chn];
+			}
+            
+            switch(nchannels)
+            {
+            case 1:
+                background0.at<uchar>(y, x) = (uchar)(meanVal[0]);
+                meanVal[0] = 0.f;
+            case 3:
+                Vec3f& meanVec = *reinterpret_cast<Vec3f*>(&meanVal[0]);
+                background0.at<Vec3b>(y, x) = Vec3b(meanVec);
+                meanVec[0] = 0.f;
+                
+            }
+            
+            float totalWeight = mptr[k].weight;
+            if(totalWeight > backgroundRatio)
+            {
+                active.at<uchar>(y, x) = (uchar)(255);
+                ks = 0;
+                }
+            
+            // Second
+            k = 1;
+            
+			for(int chn = 0; chn < nchannels; chn++)
+			{
+				meanVal[chn] =  mptr[k].mean[chn];
+			}
+            switch(nchannels)
+            {
+            case 1:
+                background1.at<uchar>(y, x) = (uchar)(meanVal[0]);
+                meanVal[0] = 0.f;
+            case 3:
+                Vec3f& meanVec = *reinterpret_cast<Vec3f*>(&meanVal[0]);
+                background1.at<Vec3b>(y, x) = Vec3b(meanVec);
+                meanVec[0] = 0.f;
+                
+            }
+            
+            totalWeight += mptr[k].weight;
+            if(totalWeight > backgroundRatio && ks < 0)
+            {
+                active.at<uchar>(y, x) = (uchar)(180);
+                ks = 1;
+                }
+            // Third
+            k = 2;
+			for(int chn = 0; chn < nchannels; chn++)
+			{
+				meanVal[chn] =  mptr[k].mean[chn];
+			}
+            switch(nchannels)
+            {
+            case 1:
+                background2.at<uchar>(y, x) = (uchar)(meanVal[0]);
+                meanVal[0] = 0.f;
+            case 3:
+                Vec3f& meanVec = *reinterpret_cast<Vec3f*>(&meanVal[0]);
+                background2.at<Vec3b>(y, x) = Vec3b(meanVec);
+                meanVec[0] = 0.f;
+                
+            }
+            totalWeight += mptr[k].weight;
+            if(totalWeight > backgroundRatio && ks < 0)
+            {
+                active.at<uchar>(y, x) = (uchar)(90);
+                ks = 2;
+                }
+            
+            if(ks < 0)
+            {
+                active.at<uchar>(y, x) = (uchar)(0);
+                }
+        }
+        
+    }
+    background0.copyTo(backgroundImage0);
+    background1.copyTo(backgroundImage1);
+    background2.copyTo(backgroundImage2);
+    active.copyTo(activeBackground);
 }
 
 }
