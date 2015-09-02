@@ -63,15 +63,15 @@ void BackgroundSubtractor::operator()(InputArray, OutputArray, double)
 {
 }
 
-void BackgroundSubtractor::getBackgroundImage(OutputArray) const
-{
-}
+//void BackgroundSubtractor::getBackgroundImage(OutputArray) const
+//{
+//}
 
 static const int defaultNMixtures = 5;
 static const int defaultHistory = 200;
 static const double defaultBackgroundRatio = 0.7;
-static const double defaultVarThreshold = 2.5*2.5;
-static const double defaultNoiseSigma = 30*0.5;
+static const double defaultVarThreshold = 3.76 * 3.76;//2.5*2.5;
+static const double defaultNoiseSigma = 3.;//30*0.5;
 static const double defaultInitialWeight = 0.05;
 
 BackgroundSubtractorMOG::BackgroundSubtractorMOG()
@@ -120,10 +120,12 @@ void BackgroundSubtractorMOG::initialize(Size _frameSize, int _frameType)
     // the mixture sort key (w/sum_of_variances), the mixture weight (w),
     // the mean (nchannels values) and
     // the diagonal covariance matrix (another nchannels values)
-    bgmodel.create( 1, frameSize.height*frameSize.width*nmixtures*(2 + 2*nchannels), CV_32F );
+    bgmodel.create( 1, frameSize.height*frameSize.width*nmixtures*(3 + 2*nchannels), CV_32F );
     bgmodel = Scalar::all(0);
-}
+    bgmodel_o.create( 1, frameSize.height*frameSize.width*nmixtures*(3 + 2*nchannels), CV_32F );
+    bgmodel_o = Scalar::all(0);
 
+}
 
 template<typename VT> struct MixData
 {
@@ -134,13 +136,115 @@ template<typename VT> struct MixData
 };
 
 
-static void process8uC1( const Mat& image, Mat& fgmask, double learningRate,
-                         Mat& bgmodel, int nmixtures, double backgroundRatio,
-                         double varThreshold, double noiseSigma )
+static void process_ghost_mask ( const Mat& inmask, Mat& bgmodel, Mat& bgmodel_o, int nmixtures)
 {
+	int x, y, k, k1, rows = inmask.rows, cols = inmask.cols;
+    int K = nmixtures;
+    
+    MixData<Vec3f>* mptr = (MixData<Vec3f>*)bgmodel.data;
+	MixData<Vec3f>* mptr_o = (MixData<Vec3f>*)bgmodel_o.data;
+	
+    for( y = 0; y < rows; y++ )
+    {		
+		
+		
+		const uchar* mask = inmask.ptr<uchar>(y);
+		for( x = 0; x < cols; x++, mptr += K , mptr_o += K)
+		{
+			//std::cout << mptr_o[0].sortKey << std::endl;
+			if(mask[x] > 0)
+			{
+				float w = (float) mask[x] / (float) 255.0;
+				float wscale = 1.f/(1 + w);
+				
+				for( k = 0; k < K; k++ )
+				{
+					//std::cout << y << ' ' << x << ' ' << k << "y x k" << std::endl;
+					
+					if(mptr[k].weight > mptr_o[k].weight)
+					{
+						mptr[k].weight += w;
+						break;
+					}
+				}
+				for( k1 = 0; k1 < K; k1++ )
+				{
+					//std::cout << y << ' ' << x << ' ' << k << "y x k" << std::endl;
+					mptr[k1].weight *= wscale;
+				}
+				for( k1 = k - 1; k1 >= 0; k1-- )
+				{
+					if( mptr[k1].sortKey <= mptr[k1+1].sortKey )
+					{
+						std::swap( mptr[k1], mptr[k1+1] );
+					}
+				}
+			}
+		}
+	}
+}
+
+static void process_static_mask ( const Mat& inmask, Mat& bgmodel, Mat& bgmodel_o, int nmixtures)
+{
+	int x, y, k, k1, rows = inmask.rows, cols = inmask.cols;
+    int K = nmixtures;
+    
+    MixData<Vec3f>* mptr = (MixData<Vec3f>*)bgmodel.data;
+	MixData<Vec3f>* mptr_o = (MixData<Vec3f>*)bgmodel_o.data;
+	
+    for( y = 0; y < rows; y++ )
+    {		
+		
+		
+		const uchar* mask = inmask.ptr<uchar>(y);
+		for( x = 0; x < cols; x++, mptr += K , mptr_o += K)
+		{
+			//std::cout << mptr_o[0].sortKey << std::endl;
+			if(mask[x] > 0)
+			{
+				float w = (float) mask[x] / (float) 255.0;
+				float ch = 0;
+				
+				for( k = 0; k < K; k++ )
+				{
+					//std::cout << y << ' ' << x << ' ' << k << "y x k" << std::endl;
+					
+					if(mptr[k].weight > mptr_o[k].weight)
+					{
+						ch = w * (mptr[k].weight - mptr_o[k].weight);
+						mptr[k].weight -= ch;
+						break;
+					}
+				}
+				for( k1 = 0; k1 < K; k1++ )
+				{
+					//std::cout << y << ' ' << x << ' ' << k << "y x k" << std::endl;
+					mptr[k1].weight *= 1.f/(1 - ch);
+				}
+				for( k1 = k - 1; k1 >= 0; k1-- )
+				{
+					if( mptr[k1].sortKey <= mptr[k1+1].sortKey )
+					{
+						std::swap( mptr[k1], mptr[k1+1] );
+					}
+				}
+			}
+		}
+	}
+}
+	
+
+static void process8uC1( const Mat& image, Mat& fgmask, double learningRate,
+                         Mat& bgmodel, Mat& bgmodel_o, int nmixtures, double backgroundRatio,
+                         double varThreshold, double noiseSigma )
+{	
+    // Nema zmenu updatu s beta
+    
     int x, y, k, k1, rows = image.rows, cols = image.cols;
     float alpha = (float)learningRate, T = (float)backgroundRatio, vT = (float)varThreshold;
     int K = nmixtures;
+    
+    bgmodel.copyTo(bgmodel_o);
     MixData<float>* mptr = (MixData<float>*)bgmodel.data;
 
     const float w0 = (float)defaultInitialWeight;
@@ -263,7 +367,7 @@ static void process8uC1( const Mat& image, Mat& fgmask, double learningRate,
 
 
 static void process8uC3( const Mat& image, Mat& fgmask, double learningRate,
-                         Mat& bgmodel, int nmixtures, double backgroundRatio,
+                         Mat& bgmodel, Mat& bgmodel_o, int nmixtures, double backgroundRatio,
                          double varThreshold, double noiseSigma )
 {
     int x, y, k, k1, rows = image.rows, cols = image.cols;
@@ -274,6 +378,8 @@ static void process8uC3( const Mat& image, Mat& fgmask, double learningRate,
     const float sk0 = (float)(w0/(defaultNoiseSigma*2*sqrt(3.)));
     const float var0 = (float)(defaultNoiseSigma*defaultNoiseSigma*4);
     const float minVar = (float)(noiseSigma*noiseSigma);
+    
+    bgmodel.copyTo(bgmodel_o);
     MixData<Vec3f>* mptr = (MixData<Vec3f>*)bgmodel.data;
 
     for( y = 0; y < rows; y++ )
@@ -351,6 +457,7 @@ static void process8uC3( const Mat& image, Mat& fgmask, double learningRate,
         }
         else
         {
+            // Bez uceni, neupdatovane
             for( x = 0; x < cols; x++, mptr += K )
             {
                 Vec3f pix(src[x*3], src[x*3+1], src[x*3+2]);
@@ -408,11 +515,64 @@ void BackgroundSubtractorMOG::operator()(InputArray _image, OutputArray _fgmask,
     CV_Assert(learningRate >= 0);
 
     if( image.type() == CV_8UC1 )
-        process8uC1( image, fgmask, learningRate, bgmodel, nmixtures, backgroundRatio, varThreshold, noiseSigma );
+        process8uC1( image, fgmask, learningRate, bgmodel, bgmodel_o, nmixtures, backgroundRatio, varThreshold, noiseSigma);
     else if( image.type() == CV_8UC3 )
-        process8uC3( image, fgmask, learningRate, bgmodel, nmixtures, backgroundRatio, varThreshold, noiseSigma );
+        process8uC3( image, fgmask, learningRate, bgmodel, bgmodel_o, nmixtures, backgroundRatio, varThreshold, noiseSigma);
     else
         CV_Error( CV_StsUnsupportedFormat, "Only 1- and 3-channel 8-bit images are supported in BackgroundSubtractorMOG" );
+}
+
+void BackgroundSubtractorMOG::ghost_mask(InputArray _inmask)
+{
+	Mat inmask = _inmask.getMat();
+	process_ghost_mask(inmask, bgmodel, bgmodel_o, nmixtures);
+
+}
+
+void BackgroundSubtractorMOG::static_mask(InputArray _inmask)
+{
+	Mat inmask = _inmask.getMat();
+	process_static_mask(inmask, bgmodel, bgmodel_o, nmixtures);
+
+}
+
+// Required for Ghost detection Evaluators
+void BackgroundSubtractorMOG::getBackgroundImage(OutputArray backgroundImage) const
+{
+    int x, y, k, K = nmixtures;
+    int nchannels = CV_MAT_CN(frameType);
+    CV_Assert(nchannels == 1 || nchannels == 3);
+
+    Mat meanBackground(frameSize, CV_MAKETYPE(CV_8U, nchannels), Scalar::all(0));
+    MixData<Vec3f>* mptr = (MixData<Vec3f>*)bgmodel.data;
+
+    std::vector<float> meanVal(nchannels, 0.f);
+    for( y = 0; y < frameSize.height; y++ )
+    {
+        for( x = 0; x < frameSize.width; x++, mptr += K )
+        {
+            k = 0;
+			for(int chn = 0; chn < nchannels; chn++)
+			{
+				meanVal[chn] +=  mptr[k].mean[chn];
+			}
+			
+            switch(nchannels)
+            {
+            case 1:
+                meanBackground.at<uchar>(y, x) = (uchar)(meanVal[0]);
+                meanVal[0] = 0.f;
+                break;
+            case 3:
+                Vec3f& meanVec = *reinterpret_cast<Vec3f*>(&meanVal[0]);
+                meanBackground.at<Vec3b>(y, x) = Vec3b(meanVec);
+                meanVec = 0.f;
+                break;
+            }
+        }
+        
+    }
+    meanBackground.copyTo(backgroundImage);
 }
 
 }

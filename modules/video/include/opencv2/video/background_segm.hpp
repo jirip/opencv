@@ -60,11 +60,8 @@ public:
     //! the virtual destructor
     virtual ~BackgroundSubtractor();
     //! the update operator that takes the next video frame and returns the current foreground mask as 8-bit binary image.
-    CV_WRAP_AS(apply) virtual void operator()(InputArray image, OutputArray fgmask,
-                                              double learningRate=0);
-
-    //! computes a background image
-    virtual void getBackgroundImage(OutputArray backgroundImage) const;
+    CV_WRAP_AS(apply) virtual void operator()(InputArray image, OutputArray fgmask, double learningRate=-1.0);
+    
 };
 
 
@@ -81,6 +78,15 @@ public:
 class CV_EXPORTS_W BackgroundSubtractorMOG : public BackgroundSubtractor
 {
 public:
+
+
+	//! process ghost mask - removing foreground by accelerating learning process	
+	CV_WRAP_AS(ghost_mask) virtual void ghost_mask(InputArray inmask);
+	//! process static mask - restoring foreground by slowing down learning process
+	CV_WRAP_AS(static_mask) virtual void static_mask(InputArray inmask);
+	//! return image of background model
+	CV_WRAP_AS(get_background) virtual void getBackgroundImage(OutputArray backgroundImage) const;
+    
     //! the default constructor
     CV_WRAP BackgroundSubtractorMOG();
     //! the full constructor that takes the length of the history, the number of gaussian mixtures, the background ratio parameter and the noise strength
@@ -88,7 +94,7 @@ public:
     //! the destructor
     virtual ~BackgroundSubtractorMOG();
     //! the update operator
-    virtual void operator()(InputArray image, OutputArray fgmask, double learningRate=0);
+    virtual void operator()(InputArray image, OutputArray fgmask, double learningRate=-1.0);
 
     //! re-initiaization method
     virtual void initialize(Size frameSize, int frameType);
@@ -99,6 +105,7 @@ protected:
     Size frameSize;
     int frameType;
     Mat bgmodel;
+    Mat bgmodel_o;
     int nframes;
     int history;
     int nmixtures;
@@ -106,6 +113,34 @@ protected:
     double backgroundRatio;
     double noiseSigma;
 };
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 /*!
