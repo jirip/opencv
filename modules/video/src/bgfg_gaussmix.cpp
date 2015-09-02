@@ -131,6 +131,7 @@ template<typename VT> struct MixData
 {
     float sortKey;
     float weight;
+	int clusterWeightSum;
     VT mean;
     VT var;
 };
@@ -368,11 +369,14 @@ static void process8uC1( const Mat& image, Mat& fgmask, double learningRate,
 
 static void process8uC3( const Mat& image, Mat& fgmask, double learningRate,
                          Mat& bgmodel, Mat& bgmodel_o, int nmixtures, double backgroundRatio,
-                         double varThreshold, double noiseSigma )
+                         double varThreshold, double noiseSigma, int nframes)
 {
     int x, y, k, k1, rows = image.rows, cols = image.cols;
     float alpha = (float)learningRate, T = (float)backgroundRatio, vT = (float)varThreshold;
     int K = nmixtures;
+
+    float beta = (1 - alpha); // / alpha;
+    alpha = max(alpha, (float) 1./nframes);
 
     const float w0 = (float)defaultInitialWeight;
     const float sk0 = (float)(w0/(defaultNoiseSigma*2*sqrt(3.)));
@@ -404,16 +408,27 @@ static void process8uC3( const Mat& image, Mat& fgmask, double learningRate,
                     Vec3f mu = mptr[k].mean;
                     Vec3f var = mptr[k].var;
                     Vec3f diff = pix - mu;
-                    float d2 = diff.dot(diff);
-                    if( d2 < vT*(var[0] + var[1] + var[2]) )
+                    Vec3f diff2;
+                    divide(diff, var, diff2);
+                    float d2 = diff.dot(diff2);
+
+                    if( d2 < vT )
                     {
                         wsum -= w;
+                        
+                        float prevClusterWeightSumBeta = mptr[k].clusterWeightSum * beta;
+                        float newClusterWeightSum = prevClusterWeightSumBeta + 1.f;
+                        
+                        mptr[k].clusterWeightSum = newClusterWeightSum;
+                        
                         float dw = alpha*(1.f - w);
                         mptr[k].weight = w + dw;
-                        mptr[k].mean = mu + alpha*diff;
-                        var = Vec3f(max(var[0] + alpha*(diff[0]*diff[0] - var[0]), minVar),
-                                    max(var[1] + alpha*(diff[1]*diff[1] - var[1]), minVar),
-                                    max(var[2] + alpha*(diff[2]*diff[2] - var[2]), minVar));
+                         
+                        mptr[k].mean = (mu * prevClusterWeightSumBeta + pix) / newClusterWeightSum;
+                        var = Vec3f(max((var[0] * prevClusterWeightSumBeta + diff[0]*diff[0]) / newClusterWeightSum, minVar*3),
+                                    max((var[1] * prevClusterWeightSumBeta + diff[1]*diff[1]) / newClusterWeightSum, minVar),
+                                    max((var[2] * prevClusterWeightSumBeta + diff[2]*diff[2]) / newClusterWeightSum, minVar));
+                         
                         mptr[k].var = var;
                         mptr[k].sortKey = w/sqrt(var[0] + var[1] + var[2]);
 
@@ -434,8 +449,9 @@ static void process8uC3( const Mat& image, Mat& fgmask, double learningRate,
                     kHit = k = min(k, K-1);
                     wsum += w0 - mptr[k].weight;
                     mptr[k].weight = w0;
+                    mptr[k].clusterWeightSum = 1;
                     mptr[k].mean = pix;
-                    mptr[k].var = Vec3f(var0, var0, var0);
+                    mptr[k].var = Vec3f(var0*3, var0, var0);
                     mptr[k].sortKey = sk0;
                 }
                 else
@@ -511,13 +527,13 @@ void BackgroundSubtractorMOG::operator()(InputArray _image, OutputArray _fgmask,
     Mat fgmask = _fgmask.getMat();
 
     ++nframes;
-    learningRate = learningRate >= 0 && nframes > 1 ? learningRate : 1./min( nframes, history );
+    learningRate = learningRate >= 0 && nframes > 1 ? learningRate : 1./history; // 1./min(nframes, history)
     CV_Assert(learningRate >= 0);
 
     if( image.type() == CV_8UC1 )
         process8uC1( image, fgmask, learningRate, bgmodel, bgmodel_o, nmixtures, backgroundRatio, varThreshold, noiseSigma);
     else if( image.type() == CV_8UC3 )
-        process8uC3( image, fgmask, learningRate, bgmodel, bgmodel_o, nmixtures, backgroundRatio, varThreshold, noiseSigma);
+        process8uC3( image, fgmask, learningRate, bgmodel, bgmodel_o, nmixtures, backgroundRatio, varThreshold, noiseSigma, nframes);
     else
         CV_Error( CV_StsUnsupportedFormat, "Only 1- and 3-channel 8-bit images are supported in BackgroundSubtractorMOG" );
 }
