@@ -538,6 +538,10 @@ void BackgroundSubtractorMOG::operator()(InputArray _image, OutputArray _fgmask,
         CV_Error( CV_StsUnsupportedFormat, "Only 1- and 3-channel 8-bit images are supported in BackgroundSubtractorMOG" );
 }
 
+void BackgroundSubtractorMOG::set_n_frames(int new_nframes)
+{
+	nframes = new_nframes;
+}
 void BackgroundSubtractorMOG::ghost_mask(InputArray _inmask)
 {
 	Mat inmask = _inmask.getMat();

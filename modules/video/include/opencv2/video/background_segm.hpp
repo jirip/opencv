@@ -79,6 +79,7 @@ class CV_EXPORTS_W BackgroundSubtractorMOG : public BackgroundSubtractor
 {
 public:
 
+	CV_WRAP_AS(set_n_frames) virtual void set_n_frames(int new_nframes);
 
 	//! process ghost mask - removing foreground by accelerating learning process	
 	CV_WRAP_AS(ghost_mask) virtual void ghost_mask(InputArray inmask);
