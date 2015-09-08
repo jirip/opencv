@@ -73,6 +73,7 @@ static const double defaultBackgroundRatio = 0.7;
 static const double defaultVarThreshold = 3.76 * 3.76;//2.5*2.5;
 static const double defaultNoiseSigma = 3.;//30*0.5;
 static const double defaultInitialWeight = 0.05;
+static const int defaultLChannelRatio = 1;
 
 BackgroundSubtractorMOG::BackgroundSubtractorMOG()
 {
@@ -85,11 +86,13 @@ BackgroundSubtractorMOG::BackgroundSubtractorMOG()
     varThreshold = defaultVarThreshold;
     backgroundRatio = defaultBackgroundRatio;
     noiseSigma = defaultNoiseSigma;
+    LChannelRatio = defaultLChannelRatio;
 }
 
 BackgroundSubtractorMOG::BackgroundSubtractorMOG(int _history, int _nmixtures,
                                                  double _backgroundRatio,
-                                                 double _noiseSigma)
+                                                 double _noiseSigma,
+                                                 int _LChannelRatio)
 {
     frameSize = Size(0,0);
     frameType = 0;
@@ -100,6 +103,7 @@ BackgroundSubtractorMOG::BackgroundSubtractorMOG(int _history, int _nmixtures,
     varThreshold = defaultVarThreshold;
     backgroundRatio = min(_backgroundRatio > 0 ? _backgroundRatio : 0.95, 1.);
     noiseSigma = _noiseSigma <= 0 ? defaultNoiseSigma : _noiseSigma;
+    LChannelRatio = _LChannelRatio <= 1 ? defaultLChannelRatio : _LChannelRatio;
 }
 
 BackgroundSubtractorMOG::~BackgroundSubtractorMOG()
@@ -369,7 +373,7 @@ static void process8uC1( const Mat& image, Mat& fgmask, double learningRate,
 
 static void process8uC3( const Mat& image, Mat& fgmask, double learningRate,
                          Mat& bgmodel, Mat& bgmodel_o, int nmixtures, double backgroundRatio,
-                         double varThreshold, double noiseSigma, int nframes)
+                         double varThreshold, double noiseSigma, int nframes, int LChannelRatio)
 {
     int x, y, k, k1, rows = image.rows, cols = image.cols;
     float alpha = (float)learningRate, T = (float)backgroundRatio, vT = (float)varThreshold;
@@ -425,7 +429,7 @@ static void process8uC3( const Mat& image, Mat& fgmask, double learningRate,
                         mptr[k].weight = w + dw;
                          
                         mptr[k].mean = (mu * prevClusterWeightSumBeta + pix) / newClusterWeightSum;
-                        var = Vec3f(max((var[0] * prevClusterWeightSumBeta + diff[0]*diff[0]) / newClusterWeightSum, minVar*3),
+                        var = Vec3f(max((var[0] * prevClusterWeightSumBeta + diff[0]*diff[0]) / newClusterWeightSum, minVar*LChannelRatio),
                                     max((var[1] * prevClusterWeightSumBeta + diff[1]*diff[1]) / newClusterWeightSum, minVar),
                                     max((var[2] * prevClusterWeightSumBeta + diff[2]*diff[2]) / newClusterWeightSum, minVar));
                          
@@ -451,7 +455,7 @@ static void process8uC3( const Mat& image, Mat& fgmask, double learningRate,
                     mptr[k].weight = w0;
                     mptr[k].clusterWeightSum = 1;
                     mptr[k].mean = pix;
-                    mptr[k].var = Vec3f(var0*3, var0, var0);
+                    mptr[k].var = Vec3f(var0*LChannelRatio, var0, var0);
                     mptr[k].sortKey = sk0;
                 }
                 else
@@ -533,7 +537,7 @@ void BackgroundSubtractorMOG::operator()(InputArray _image, OutputArray _fgmask,
     if( image.type() == CV_8UC1 )
         process8uC1( image, fgmask, learningRate, bgmodel, bgmodel_o, nmixtures, backgroundRatio, varThreshold, noiseSigma);
     else if( image.type() == CV_8UC3 )
-        process8uC3( image, fgmask, learningRate, bgmodel, bgmodel_o, nmixtures, backgroundRatio, varThreshold, noiseSigma, nframes);
+        process8uC3( image, fgmask, learningRate, bgmodel, bgmodel_o, nmixtures, backgroundRatio, varThreshold, noiseSigma, nframes, LChannelRatio);
     else
         CV_Error( CV_StsUnsupportedFormat, "Only 1- and 3-channel 8-bit images are supported in BackgroundSubtractorMOG" );
 }

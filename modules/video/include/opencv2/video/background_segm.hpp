@@ -93,7 +93,7 @@ public:
     //! the default constructor
     CV_WRAP BackgroundSubtractorMOG();
     //! the full constructor that takes the length of the history, the number of gaussian mixtures, the background ratio parameter and the noise strength
-    CV_WRAP BackgroundSubtractorMOG(int history, int nmixtures, double backgroundRatio, double noiseSigma=0);
+    CV_WRAP BackgroundSubtractorMOG(int history, int nmixtures, double backgroundRatio, double noiseSigma=0, int LChannelRatio=1);
     //! the destructor
     virtual ~BackgroundSubtractorMOG();
     //! the update operator
@@ -112,6 +112,8 @@ protected:
     int nframes;
     int history;
     int nmixtures;
+    
+    int LChannelRatio;
     double varThreshold;
     double backgroundRatio;
     double noiseSigma;
